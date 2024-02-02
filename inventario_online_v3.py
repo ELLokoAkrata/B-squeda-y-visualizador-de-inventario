@@ -78,7 +78,21 @@ Rango de precios: {rango_precios[0]} - {rango_precios[1]}
 
 # Streamlit App
 def app():
-    st.title("Conversor y Visualizador de Archivos")
+    st.title("Visualizador, buscador y generador de resumen de inventario")
+
+    # Descripción de la aplicación con st.write
+    st.write("""
+    Esta aplicación permite cargar archivos de inventario en formatos CSV o XLSX, 
+    visualizar los datos y buscar dentro del inventario. También puedes generar un 
+    resumen del inventario que incluye el item con mayor y menor cantidad, el precio 
+    promedio y el rango de precios.
+    
+    **Instrucciones:**
+    - Utiliza el botón 'Cargar archivo' para subir tu archivo de inventario.
+    - Escribe en el cuadro de búsqueda para filtrar los resultados.
+    - El resumen del inventario se generará automáticamente basado en los datos filtrados.
+    """)
+    
 
     archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
     datos_originales = cargar_datos(archivo)
@@ -100,3 +114,4 @@ def app():
 
 if __name__ == "__main__":
     app()
+
