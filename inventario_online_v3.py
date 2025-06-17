@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side
 
 def preparar_datos(datos):
     # Asegúrate de que todas las entradas en las columnas que podrían tener tipos mixtos sean cadenas.
@@ -31,10 +33,38 @@ def cargar_datos(archivo):
     return None
 
 # Convierte un DataFrame en bytes para descargarlo como archivo Excel
-def convertir_a_excel(df):
+def convertir_a_excel(df, original_bytes=None, filas_originales=0):
+    """Convierte un DataFrame en bytes tomando como base el archivo original.
+
+    Si se proporciona ``original_bytes`` se preserva el documento original y
+    solo se añaden las filas nuevas, manteniendo el formato y añadiendo
+    bordes a las nuevas celdas.
+    """
+
+    if original_bytes is not None:
+        wb = load_workbook(filename=BytesIO(original_bytes))
+        ws = wb.active
+        border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
+        )
+
+        for row in df.iloc[filas_originales:].fillna("").itertuples(index=False):
+            ws.append(list(row))
+            for col_idx, _ in enumerate(row, start=1):
+                cell = ws.cell(row=ws.max_row, column=col_idx)
+                cell.border = border
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.fillna("").to_excel(writer, index=False)
     buffer.seek(0)
     return buffer
 
@@ -105,10 +135,16 @@ def app():
 
     if 'datos' not in st.session_state:
         st.session_state['datos'] = None
+        st.session_state['archivo_bytes'] = None
+        st.session_state['extension'] = None
+        st.session_state['filas_originales'] = 0
 
     archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
     if archivo is not None:
         st.session_state['datos'] = cargar_datos(archivo)
+        st.session_state['archivo_bytes'] = archivo.getvalue()
+        st.session_state['extension'] = '.xlsx' if archivo.name.endswith('.xlsx') else '.csv'
+        st.session_state['filas_originales'] = len(st.session_state['datos'])
 
     datos = st.session_state['datos']
 
@@ -150,7 +186,11 @@ def app():
                     'PRECIO UNIT': precio,
                     'TOTAL': total,
                 }
-                st.session_state['datos'] = pd.concat([datos, pd.DataFrame([nuevo])], ignore_index=True)
+                st.session_state['datos'] = pd.concat([
+                    datos,
+                    pd.DataFrame([nuevo])
+                ], ignore_index=True)
+                st.session_state['datos'].fillna('', inplace=True)
                 datos = st.session_state['datos']
                 st.success('Item añadido correctamente')
 
@@ -165,8 +205,25 @@ def app():
             else:
                 st.warning("No se encontraron coincidencias.")
 
-        excel_bytes = convertir_a_excel(datos)
-        st.download_button("Descargar inventario actualizado", data=excel_bytes, file_name="inventario_actualizado.xlsx")
+        if st.session_state.get('extension') == '.xlsx':
+            excel_bytes = convertir_a_excel(
+                datos,
+                st.session_state.get('archivo_bytes'),
+                st.session_state.get('filas_originales', 0),
+            )
+            file_name = "inventario_actualizado.xlsx"
+        else:
+            tmp = BytesIO()
+            datos.fillna('').to_csv(tmp, index=False)
+            tmp.seek(0)
+            excel_bytes = tmp
+            file_name = "inventario_actualizado.csv"
+
+        st.download_button(
+            "Descargar inventario actualizado",
+            data=excel_bytes,
+            file_name=file_name,
+        )
 
 if __name__ == "__main__":
     app()
