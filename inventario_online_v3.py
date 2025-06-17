@@ -4,6 +4,9 @@ from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
+# Cuántas filas saltar antes de la cabecera real
+HEADER_OFFSET = 3
+
 # ---------- LIMPIEZA CENTRALIZADA ---------- #
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -46,7 +49,8 @@ def cargar_datos(archivo):
         excel_file = pd.ExcelFile(archivo)
         sheet_name = excel_file.sheet_names[0]
         st.session_state['hoja'] = sheet_name
-        datos = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=3, dtype=str)
+        datos = pd.read_excel(excel_file, sheet_name=sheet_name,
+                             skiprows=HEADER_OFFSET, dtype=str)
     elif archivo.name.endswith('.csv'):
         st.session_state['hoja'] = None
         datos = pd.read_csv(archivo, dtype=str)
@@ -151,7 +155,7 @@ def app():
                 original_df = pd.read_excel(
                     BytesIO(st.session_state['archivo_bytes']),
                     sheet_name=st.session_state['hoja'],
-                    skiprows=3,
+                    skiprows=HEADER_OFFSET,
                     dtype=str
                 )
             else:
@@ -222,9 +226,12 @@ def app():
         # ---------- PREVISUALIZACIÓN ---------- #
         with st.expander("Previsualizar archivo generado"):
             if st.session_state['extension'] == '.xlsx':
-                prev = pd.read_excel(BytesIO(buffer.getvalue()),
-                                     sheet_name=st.session_state['hoja'],
-                                     dtype=str)
+                prev = pd.read_excel(
+                    BytesIO(buffer.getvalue()),
+                    sheet_name=st.session_state['hoja'],
+                    skiprows=HEADER_OFFSET,
+                    dtype=str
+                )
             else:
                 prev = pd.read_csv(BytesIO(buffer.getvalue()), dtype=str)
             st.dataframe(clean_df(prev))
