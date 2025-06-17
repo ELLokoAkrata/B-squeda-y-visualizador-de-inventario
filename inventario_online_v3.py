@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from io import BytesIO
 
 def preparar_datos(datos):
     # Asegúrate de que todas las entradas en las columnas que podrían tener tipos mixtos sean cadenas.
@@ -28,6 +29,14 @@ def cargar_datos(archivo):
         datos.dropna(axis=1, how='all', inplace=True)
         return datos
     return None
+
+# Convierte un DataFrame en bytes para descargarlo como archivo Excel
+def convertir_a_excel(df):
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+    return buffer
 
 # Función para resaltar coincidencias en los datos (simplificada para Streamlit)
 def resaltar_coincidencias(datos, texto_busqueda):
@@ -94,16 +103,60 @@ def app():
     """)
     
 
-    archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
-    datos_originales = cargar_datos(archivo)
+    if 'datos' not in st.session_state:
+        st.session_state['datos'] = None
 
-    if datos_originales is not None:
+    archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
+    if archivo is not None:
+        st.session_state['datos'] = cargar_datos(archivo)
+
+    datos = st.session_state['datos']
+
+    if datos is not None:
         st.write("Datos Cargados:")
-        st.dataframe(datos_originales)
+        st.dataframe(datos)
+
+        with st.expander("Añadir nuevo item"):
+            with st.form("form-nuevo-item"):
+                col1, col2 = st.columns(2)
+                item = col1.text_input('ITEM')
+                descripcion = col1.text_input('DESCRIPCIÓN')
+                marca = col1.text_input('MARCA')
+                modelo = col1.text_input('MODELO')
+                pn = col1.text_input('P/N')
+                sn = col1.text_input('S/N')
+                observ = col2.text_input('OBSERVACIONES')
+                status = col2.text_input('STATUS')
+                ubicacion = col2.text_input('UBICACIÓN')
+                medida = col2.text_input('MEDIDA')
+                cant = col1.number_input('CANT.', value=0, step=1)
+                precio = col1.number_input('PRECIO UNIT', value=0.0)
+                total = col1.number_input('TOTAL', value=0.0)
+                enviado = st.form_submit_button('Añadir')
+
+            if enviado:
+                nuevo = {
+                    'ITEM': item,
+                    'DESCRIPCIÓN': descripcion,
+                    'MARCA': marca,
+                    'MODELO': modelo,
+                    'P/N': pn,
+                    'S/N': sn,
+                    'OBSERVACIONES': observ,
+                    'STATUS': status,
+                    'UBICACIÓN': ubicacion,
+                    'MEDIDA': medida,
+                    'CANT.': cant,
+                    'PRECIO UNIT': precio,
+                    'TOTAL': total,
+                }
+                st.session_state['datos'] = pd.concat([datos, pd.DataFrame([nuevo])], ignore_index=True)
+                datos = st.session_state['datos']
+                st.success('Item añadido correctamente')
 
         texto_busqueda = st.text_input("Buscar texto en los datos:")
         if texto_busqueda:
-            datos_filtrados = resaltar_coincidencias(datos_originales, texto_busqueda)
+            datos_filtrados = resaltar_coincidencias(datos, texto_busqueda)
             if not datos_filtrados.empty:
                 st.write("Resultados de la búsqueda:")
                 st.dataframe(datos_filtrados)
@@ -111,6 +164,9 @@ def app():
                 st.info(resumen_busqueda(datos_filtrados))
             else:
                 st.warning("No se encontraron coincidencias.")
+
+        excel_bytes = convertir_a_excel(datos)
+        st.download_button("Descargar inventario actualizado", data=excel_bytes, file_name="inventario_actualizado.xlsx")
 
 if __name__ == "__main__":
     app()
