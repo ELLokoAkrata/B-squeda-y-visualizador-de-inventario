@@ -223,6 +223,13 @@ def app():
             buffer.seek(0)
             fname = "inventario_actualizado.csv"
 
+        # ---------- DESCARGA (reubicado) ---------- #
+        st.download_button(
+            "Descargar inventario actualizado",
+            data=buffer,
+            file_name=fname
+        )
+
         # ---------- PREVISUALIZACIÓN ---------- #
         with st.expander("Previsualizar archivo generado"):
             if st.session_state['extension'] == '.xlsx':
@@ -236,8 +243,6 @@ def app():
                 prev = pd.read_csv(BytesIO(buffer.getvalue()), dtype=str)
             st.dataframe(clean_df(prev))
 
-        st.download_button("Descargar inventario actualizado",
-                           data=buffer, file_name=fname)
 
 if __name__ == "__main__":
     app()
