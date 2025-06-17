@@ -54,6 +54,16 @@ def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=No
         wb = load_workbook(filename=BytesIO(original_bytes))
         # Si se especifica un nombre de hoja, se selecciona esa hoja; de lo contrario, se utiliza la activa
         ws = wb[sheet_name] if sheet_name else wb.active
+
+        # Elimina filas vacías al final para evitar huecos al insertar
+        ultima_fila = ws.max_row
+        for row_idx in range(ws.max_row, 0, -1):
+            if any(cell.value not in (None, "") for cell in ws[row_idx]):
+                break
+            ultima_fila = row_idx - 1
+        if ultima_fila < ws.max_row:
+            ws.delete_rows(ultima_fila + 1, ws.max_row - ultima_fila)
+
         border = Border(
             left=Side(style="thin"),
             right=Side(style="thin"),
