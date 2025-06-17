@@ -27,13 +27,19 @@ def cargar_datos(archivo):
             excel_file = pd.ExcelFile(archivo)
             sheet_name = excel_file.sheet_names[0]
             st.session_state['hoja'] = sheet_name
-            datos = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=3)  # Ajuste para encabezados en la fila 4
+            datos = pd.read_excel(
+                excel_file,
+                sheet_name=sheet_name,
+                skiprows=3,
+                dtype=str,
+            )  # Ajuste para encabezados en la fila 4
         elif archivo.name.endswith('.csv'):
             st.session_state['hoja'] = None
-            datos = pd.read_csv(archivo)
+            datos = pd.read_csv(archivo, dtype=str)
+
         datos.columns = datos.columns.str.strip()
         # Elimina columnas creadas al guardar índices (p. ej. "Unnamed: 0")
-        datos = datos.loc[:, ~datos.columns.str.contains('^Unnamed')]
+        datos = datos.loc[:, ~datos.columns.str.contains(r'^Unnamed')]
         datos = preparar_datos(datos)
         # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
