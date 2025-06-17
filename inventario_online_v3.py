@@ -31,6 +31,7 @@ def cargar_datos(archivo):
         elif archivo.name.endswith('.csv'):
             st.session_state['hoja'] = None
             datos = pd.read_csv(archivo)
+        datos.columns = datos.columns.str.strip()
         datos = preparar_datos(datos)
         # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
@@ -200,6 +201,7 @@ def app():
                     datos,
                     pd.DataFrame([nuevo])
                 ], ignore_index=True)
+                st.session_state['datos'] = preparar_datos(st.session_state['datos'])
                 st.session_state['datos'].fillna('', inplace=True)
                 datos = st.session_state['datos']
                 fila_insertada = len(st.session_state['datos'])
