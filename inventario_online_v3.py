@@ -32,6 +32,8 @@ def cargar_datos(archivo):
             st.session_state['hoja'] = None
             datos = pd.read_csv(archivo)
         datos.columns = datos.columns.str.strip()
+        # Elimina columnas creadas al guardar índices (p. ej. "Unnamed: 0")
+        datos = datos.loc[:, ~datos.columns.str.contains('^Unnamed')]
         datos = preparar_datos(datos)
         # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
