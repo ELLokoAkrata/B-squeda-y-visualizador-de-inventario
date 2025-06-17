@@ -23,8 +23,13 @@ def preparar_datos(datos):
 def cargar_datos(archivo):
     if archivo is not None:
         if archivo.name.endswith('.xlsx'):
-            datos = pd.read_excel(archivo, skiprows=3)  # Ajuste para encabezados en la fila 4
+            # Captura el nombre de la primera hoja para poder manipularla más adelante
+            excel_file = pd.ExcelFile(archivo)
+            sheet_name = excel_file.sheet_names[0]
+            st.session_state['hoja'] = sheet_name
+            datos = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=3)  # Ajuste para encabezados en la fila 4
         elif archivo.name.endswith('.csv'):
+            st.session_state['hoja'] = None
             datos = pd.read_csv(archivo)
         datos = preparar_datos(datos)
         # Omitir columnas completamente vacías
@@ -33,17 +38,21 @@ def cargar_datos(archivo):
     return None
 
 # Convierte un DataFrame en bytes para descargarlo como archivo Excel
-def convertir_a_excel(df, original_bytes=None, filas_originales=0):
+def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=None):
     """Convierte un DataFrame en bytes tomando como base el archivo original.
 
     Si se proporciona ``original_bytes`` se preserva el documento original y
     solo se añaden las filas nuevas, manteniendo el formato y añadiendo
     bordes a las nuevas celdas.
+
+    ``sheet_name`` permite indicar la hoja sobre la que se añadirán los datos
+    cuando se parte de un documento existente.
     """
 
     if original_bytes is not None:
         wb = load_workbook(filename=BytesIO(original_bytes))
-        ws = wb.active
+        # Si se especifica un nombre de hoja, se selecciona esa hoja; de lo contrario, se utiliza la activa
+        ws = wb[sheet_name] if sheet_name else wb.active
         border = Border(
             left=Side(style="thin"),
             right=Side(style="thin"),
@@ -138,6 +147,7 @@ def app():
         st.session_state['archivo_bytes'] = None
         st.session_state['extension'] = None
         st.session_state['filas_originales'] = 0
+        st.session_state['hoja'] = None
 
     archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
     if archivo is not None:
@@ -210,6 +220,7 @@ def app():
                 datos,
                 st.session_state.get('archivo_bytes'),
                 st.session_state.get('filas_originales', 0),
+                sheet_name=st.session_state.get('hoja'),
             )
             file_name = "inventario_actualizado.xlsx"
         else:
