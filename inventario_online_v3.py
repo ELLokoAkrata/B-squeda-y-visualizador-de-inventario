@@ -54,6 +54,22 @@ def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=No
         wb = load_workbook(filename=BytesIO(original_bytes))
         # Si se especifica un nombre de hoja, se selecciona esa hoja; de lo contrario, se utiliza la activa
         ws = wb[sheet_name] if sheet_name else wb.active
+
+        # El archivo original puede contener filas vacías al final. Esto provoca
+        # que ``ws.max_row`` sea muy grande y que los nuevos ítems se inserten
+        # más abajo de lo esperado. Calculamos la última fila realmente
+        # utilizada y eliminamos cualquier rastro vacío antes de añadir datos.
+        def fila_vacia(idx):
+            return all(
+                ws.cell(row=idx, column=col).value in (None, "")
+                for col in range(1, ws.max_column + 1)
+            )
+
+        last_filled = ws.max_row
+        while last_filled > 0 and fila_vacia(last_filled):
+            last_filled -= 1
+        if last_filled < ws.max_row:
+            ws.delete_rows(last_filled + 1, ws.max_row - last_filled)
         border = Border(
             left=Side(style="thin"),
             right=Side(style="thin"),
