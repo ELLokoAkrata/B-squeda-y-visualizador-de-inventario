@@ -202,7 +202,11 @@ def app():
                 ], ignore_index=True)
                 st.session_state['datos'].fillna('', inplace=True)
                 datos = st.session_state['datos']
-                st.success('Item añadido correctamente')
+                fila_insertada = len(st.session_state['datos'])
+                # Para indicar la posición real en la hoja de Excel se puede
+                # sumar un offset, por ejemplo ``fila_insertada + 4`` si los
+                # encabezados comienzan en la fila 4.
+                st.success(f'Item añadido en la fila {fila_insertada}')
 
         texto_busqueda = st.text_input("Buscar texto en los datos:")
         if texto_busqueda:
