@@ -5,25 +5,20 @@ from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
 def preparar_datos(datos):
-    # Asegúrate de que todas las entradas en las columnas que podrían tener tipos mixtos sean cadenas.
     columnas_a_string = ['DESCRIPCIÓN', 'MARCA', 'MODELO', 'P/N', 'S/N', 'OBSERVACIONES', 'STATUS', 'UBICACIÓN', 'MEDIDA']
     for columna in columnas_a_string:
         datos[columna] = datos[columna].astype(str)
-    
-    # Reemplaza las cadenas vacías generadas por la conversión a `str` con un valor que indique que no hay datos
     datos.replace({'': 'No disponible'}, inplace=True)
 
-    # Asegúrate de que las columnas numéricas, como 'PRECIO UNIT' y 'TOTAL', no tengan valores no numéricos.
     columnas_numericas = ['CANT.', 'PRECIO UNIT', 'TOTAL']
     for columna in columnas_numericas:
         datos[columna] = pd.to_numeric(datos[columna], errors='coerce').fillna(0)
-    
+
     return datos
 
 def cargar_datos(archivo):
     if archivo is not None:
         if archivo.name.endswith('.xlsx'):
-            # Captura el nombre de la primera hoja para poder manipularla más adelante
             excel_file = pd.ExcelFile(archivo)
             sheet_name = excel_file.sheet_names[0]
             st.session_state['hoja'] = sheet_name
@@ -32,38 +27,26 @@ def cargar_datos(archivo):
                 sheet_name=sheet_name,
                 skiprows=3,
                 dtype=str,
-            )  # Ajuste para encabezados en la fila 4
+            )
         elif archivo.name.endswith('.csv'):
             st.session_state['hoja'] = None
             datos = pd.read_csv(archivo, dtype=str)
 
         datos.columns = datos.columns.str.strip()
-        # Elimina columnas creadas al guardar índices (p. ej. "Unnamed: 0")
+        # elimina columnas Unnamed
         datos = datos.loc[:, ~datos.columns.str.contains(r'^Unnamed')]
         datos = preparar_datos(datos)
-        # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
+        # reset del índice para evitar columnas índice
+        datos.reset_index(drop=True, inplace=True)
         return datos
     return None
 
-# Convierte un DataFrame en bytes para descargarlo como archivo Excel
 def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=None):
-    """Convierte un DataFrame en bytes tomando como base el archivo original.
-
-    Si se proporciona ``original_bytes`` se preserva el documento original y
-    solo se añaden las filas nuevas, manteniendo el formato y añadiendo
-    bordes a las nuevas celdas.
-
-    ``sheet_name`` permite indicar la hoja sobre la que se añadirán los datos
-    cuando se parte de un documento existente.
-    """
-
     if original_bytes is not None:
         wb = load_workbook(filename=BytesIO(original_bytes))
-        # Si se especifica un nombre de hoja, se selecciona esa hoja; de lo contrario, se utiliza la activa
         ws = wb[sheet_name] if sheet_name else wb.active
 
-        # Elimina filas vacías al final para evitar huecos al insertar
         ultima_fila = ws.max_row
         for row_idx in range(ws.max_row, 0, -1):
             if any(cell.value not in (None, "") for cell in ws[row_idx]):
@@ -96,71 +79,54 @@ def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=No
     buffer.seek(0)
     return buffer
 
-# Función para resaltar coincidencias en los datos (simplificada para Streamlit)
 def resaltar_coincidencias(datos, texto_busqueda):
     if datos is not None and texto_busqueda != "":
         return datos[datos.apply(lambda row: texto_busqueda.lower() in row.to_string().lower(), axis=1)]
     return pd.DataFrame()
 
-# Función para generar el resumen de la búsqueda
 def resumen_busqueda(datos_filtrados):
     if datos_filtrados.empty:
         return "No se encontraron resultados."
-    
     try:
-        # Encuentra la cantidad máxima y mínima y sus respectivos ítems
         max_cant = datos_filtrados['CANT.'].max()
         min_cant = datos_filtrados['CANT.'].min()
         max_item_row = datos_filtrados[datos_filtrados['CANT.'] == max_cant].iloc[0]
         min_item_row = datos_filtrados[datos_filtrados['CANT.'] == min_cant].iloc[0]
 
-        # Extrae los detalles del ítem con la cantidad máxima
         max_item = max_item_row['ITEM']
         max_precio = max_item_row['PRECIO UNIT']
         ubicacion_max = max_item_row['UBICACIÓN']
         status_max = max_item_row['STATUS']
 
-        # Extrae los detalles del ítem con la cantidad mínima
         min_item = min_item_row['ITEM']
         min_precio = min_item_row['PRECIO UNIT']
         ubicacion_min = min_item_row['UBICACIÓN']
         status_min = min_item_row['STATUS']
 
-        # Calcula el precio promedio y el rango de precios
         precio_promedio = datos_filtrados['PRECIO UNIT'].mean()
         rango_precios = (datos_filtrados['PRECIO UNIT'].min(), datos_filtrados['PRECIO UNIT'].max())
 
-        # Crea el string de resumen
-        resumen_str = f"""
-El item con más productos es {max_item} con una cantidad de {max_cant} y un precio de {max_precio}. Ubicación: {ubicacion_max}, Status: {status_max}
-El item con menos productos es {min_item} con una cantidad de {min_cant} y un precio de {min_precio}. Ubicación: {ubicacion_min}, Status: {status_min}
-Total de productos encontrados: {len(datos_filtrados)}
-Precio promedio: {precio_promedio:.2f}
-Rango de precios: {rango_precios[0]} - {rango_precios[1]}
-        """
+        return (
+            f"El item con más productos es {max_item} con una cantidad de {max_cant} y un precio de {max_precio}. "
+            f"Ubicación: {ubicacion_max}, Status: {status_max}\n"
+            f"El item con menos productos es {min_item} con una cantidad de {min_cant} y un precio de {min_precio}. "
+            f"Ubicación: {ubicacion_min}, Status: {status_min}\n"
+            f"Total de productos encontrados: {len(datos_filtrados)}\n"
+            f"Precio promedio: {precio_promedio:.2f}\n"
+            f"Rango de precios: {rango_precios[0]} - {rango_precios[1]}"
+        )
     except Exception as e:
-        resumen_str = f"Error al generar resumen: {e}"
-    
-    return resumen_str
+        return f"Error al generar resumen: {e}"
 
-# Streamlit App
 def app():
     st.title("Visualizador, buscador y generador de resumen de inventario")
-
-    # Descripción de la aplicación con st.write
     st.write("""
     Esta aplicación permite cargar archivos de inventario en formatos CSV o XLSX, 
     visualizar los datos y buscar dentro del inventario. También puedes generar un 
     resumen del inventario que incluye el item con mayor y menor cantidad, el precio 
     promedio y el rango de precios.
-    
-    **Instrucciones:**
-    - Utiliza el botón 'Cargar archivo' para subir tu archivo de inventario.
-    - Escribe en el cuadro de búsqueda para filtrar los resultados.
-    - El resumen del inventario se generará automáticamente basado en los datos filtrados.
     """)
     
-
     if 'datos' not in st.session_state:
         st.session_state['datos'] = None
         st.session_state['archivo_bytes'] = None
@@ -222,11 +188,7 @@ def app():
                 st.session_state['datos'] = preparar_datos(st.session_state['datos'])
                 st.session_state['datos'].fillna('', inplace=True)
                 datos = st.session_state['datos']
-                fila_insertada = len(st.session_state['datos'])
-                # Para indicar la posición real en la hoja de Excel se puede
-                # sumar un offset, por ejemplo ``fila_insertada + 4`` si los
-                # encabezados comienzan en la fila 4.
-                st.success(f'Item añadido en la fila {fila_insertada}')
+                st.success(f'Item añadido en la fila {len(datos)}')
 
         texto_busqueda = st.text_input("Buscar texto en los datos:")
         if texto_busqueda:
@@ -239,12 +201,12 @@ def app():
             else:
                 st.warning("No se encontraron coincidencias.")
 
-        if st.session_state.get('extension') == '.xlsx':
+        if st.session_state['extension'] == '.xlsx':
             excel_bytes = convertir_a_excel(
                 datos,
-                st.session_state.get('archivo_bytes'),
-                st.session_state.get('filas_originales', 0),
-                sheet_name=st.session_state.get('hoja'),
+                st.session_state['archivo_bytes'],
+                st.session_state['filas_originales'],
+                sheet_name=st.session_state['hoja'],
             )
             file_name = "inventario_actualizado.xlsx"
         else:
@@ -255,10 +217,10 @@ def app():
             file_name = "inventario_actualizado.csv"
 
         with st.expander("Previsualizar archivo"):
-            if st.session_state.get('extension') == '.xlsx':
+            if st.session_state['extension'] == '.xlsx':
                 preview_df = pd.read_excel(
                     BytesIO(excel_bytes.getvalue()),
-                    sheet_name=st.session_state.get('hoja')
+                    sheet_name=st.session_state['hoja']
                 )
             else:
                 preview_df = pd.read_csv(BytesIO(excel_bytes.getvalue()))
