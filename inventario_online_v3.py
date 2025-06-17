@@ -10,13 +10,17 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     Elimina columnas índice fantasma (Unnamed:*), resetea el índice
     y fuerza columnas object → str para que Arrow no reviente.
     """
-    # Borra columnas tipo Unnamed
-    df = df.loc[:, ~df.columns.str.contains(r'^Unnamed')]
+    # Borra columnas tipo Unnamed y crea copia segura
+    df = df.loc[:, ~df.columns.str.contains(r'^Unnamed')].copy()
     # Índice limpio
     df.reset_index(drop=True, inplace=True)
-    # Todas las object como string plano
+    # Todas las object como string plano sin applymap
     obj_cols = df.select_dtypes(include=['object']).columns
-    df[obj_cols] = df[obj_cols].applymap(lambda x: '' if pd.isna(x) else str(x))
+    df.loc[:, obj_cols] = (
+        df[obj_cols]
+          .fillna('')
+          .astype(str)
+    )
     return df
 
 # ---------- PREPARAR DATOS ---------- #
