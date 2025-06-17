@@ -31,6 +31,7 @@ def cargar_datos(archivo):
         elif archivo.name.endswith('.csv'):
             st.session_state['hoja'] = None
             datos = pd.read_csv(archivo)
+        datos.columns = datos.columns.str.strip()
         datos = preparar_datos(datos)
         # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
@@ -200,6 +201,7 @@ def app():
                     datos,
                     pd.DataFrame([nuevo])
                 ], ignore_index=True)
+                st.session_state['datos'] = preparar_datos(st.session_state['datos'])
                 st.session_state['datos'].fillna('', inplace=True)
                 datos = st.session_state['datos']
                 st.success('Item añadido correctamente')
@@ -229,6 +231,16 @@ def app():
             tmp.seek(0)
             excel_bytes = tmp
             file_name = "inventario_actualizado.csv"
+
+        with st.expander("Previsualizar archivo"):
+            if st.session_state.get('extension') == '.xlsx':
+                preview_df = pd.read_excel(
+                    BytesIO(excel_bytes.getvalue()),
+                    sheet_name=st.session_state.get('hoja')
+                )
+            else:
+                preview_df = pd.read_csv(BytesIO(excel_bytes.getvalue()))
+            st.dataframe(preview_df)
 
         st.download_button(
             "Descargar inventario actualizado",
