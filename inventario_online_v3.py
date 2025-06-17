@@ -230,6 +230,16 @@ def app():
             excel_bytes = tmp
             file_name = "inventario_actualizado.csv"
 
+        with st.expander("Previsualizar archivo"):
+            if st.session_state.get('extension') == '.xlsx':
+                preview_df = pd.read_excel(
+                    BytesIO(excel_bytes.getvalue()),
+                    sheet_name=st.session_state.get('hoja')
+                )
+            else:
+                preview_df = pd.read_csv(BytesIO(excel_bytes.getvalue()))
+            st.dataframe(preview_df)
+
         st.download_button(
             "Descargar inventario actualizado",
             data=excel_bytes,
