@@ -1,34 +1,41 @@
 import pandas as pd
 import streamlit as st
 from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side
 
 def preparar_datos(datos):
-    # Asegúrate de que todas las entradas en las columnas que podrían tener tipos mixtos sean cadenas.
-    columnas_a_string = ['DESCRIPCIÓN', 'MARCA', 'MODELO', 'P/N', 'S/N', 'OBSERVACIONES', 'STATUS', 'UBICACIÓN', 'MEDIDA']
-    for columna in columnas_a_string:
-        datos[columna] = datos[columna].astype(str)
-    
-    # Reemplaza las cadenas vacías generadas por la conversión a `str` con un valor que indique que no hay datos
-    datos.replace({'': 'No disponible'}, inplace=True)
+    """Limpia los datos manteniendo vacías las celdas sin información."""
+    columnas_texto = ['DESCRIPCIÓN', 'MARCA', 'MODELO', 'P/N', 'S/N',
+                      'OBSERVACIONES', 'STATUS', 'UBICACIÓN', 'MEDIDA']
+    for columna in columnas_texto:
+        if columna in datos.columns:
+            datos[columna] = datos[columna].fillna('')
 
-    # Asegúrate de que las columnas numéricas, como 'PRECIO UNIT' y 'TOTAL', no tengan valores no numéricos.
     columnas_numericas = ['CANT.', 'PRECIO UNIT', 'TOTAL']
     for columna in columnas_numericas:
-        datos[columna] = pd.to_numeric(datos[columna], errors='coerce').fillna(0)
+        if columna in datos.columns:
+            datos[columna] = pd.to_numeric(datos[columna], errors='coerce').fillna(0)
     
     return datos
 
 def cargar_datos(archivo):
+    """Devuelve un DataFrame limpio y, si es XLSX, el libro para mantener su estructura."""
     if archivo is not None:
         if archivo.name.endswith('.xlsx'):
-            datos = pd.read_excel(archivo, skiprows=3)  # Ajuste para encabezados en la fila 4
+            bytes_data = archivo.getvalue()
+            wb = load_workbook(BytesIO(bytes_data))
+            datos = pd.read_excel(BytesIO(bytes_data), skiprows=3)
         elif archivo.name.endswith('.csv'):
+            wb = None
             datos = pd.read_csv(archivo)
+        else:
+            return None, None
+
         datos = preparar_datos(datos)
-        # Omitir columnas completamente vacías
         datos.dropna(axis=1, how='all', inplace=True)
-        return datos
-    return None
+        return datos, wb
+    return None, None
 
 # Convierte un DataFrame en bytes para descargarlo como archivo Excel
 def convertir_a_excel(df):
@@ -37,6 +44,22 @@ def convertir_a_excel(df):
         df.to_excel(writer, index=False)
     buffer.seek(0)
     return buffer
+
+# Convierte un libro de openpyxl en bytes
+def workbook_a_bytes(wb):
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# Añade una fila a una hoja aplicando bordes
+def agregar_fila_con_bordes(ws, valores):
+    ws.append(valores)
+    fila = ws.max_row
+    thin = Side(border_style="thin", color="000000")
+    borde = Border(top=thin, left=thin, right=thin, bottom=thin)
+    for col, _ in enumerate(valores, start=1):
+        ws.cell(row=fila, column=col).border = borde
 
 # Función para resaltar coincidencias en los datos (simplificada para Streamlit)
 def resaltar_coincidencias(datos, texto_busqueda):
@@ -105,12 +128,17 @@ def app():
 
     if 'datos' not in st.session_state:
         st.session_state['datos'] = None
+    if 'workbook' not in st.session_state:
+        st.session_state['workbook'] = None
 
     archivo = st.file_uploader("Cargar archivo XLSX/CSV", type=['xlsx', 'csv'])
     if archivo is not None:
-        st.session_state['datos'] = cargar_datos(archivo)
+        datos, wb = cargar_datos(archivo)
+        st.session_state['datos'] = datos
+        st.session_state['workbook'] = wb
 
     datos = st.session_state['datos']
+    wb = st.session_state['workbook']
 
     if datos is not None:
         st.write("Datos Cargados:")
@@ -152,6 +180,10 @@ def app():
                 }
                 st.session_state['datos'] = pd.concat([datos, pd.DataFrame([nuevo])], ignore_index=True)
                 datos = st.session_state['datos']
+                if wb is not None:
+                    ws = wb.active
+                    valores = [nuevo.get(col, '') for col in datos.columns]
+                    agregar_fila_con_bordes(ws, valores)
                 st.success('Item añadido correctamente')
 
         texto_busqueda = st.text_input("Buscar texto en los datos:")
@@ -165,7 +197,10 @@ def app():
             else:
                 st.warning("No se encontraron coincidencias.")
 
-        excel_bytes = convertir_a_excel(datos)
+        if wb is not None:
+            excel_bytes = workbook_a_bytes(wb)
+        else:
+            excel_bytes = convertir_a_excel(datos)
         st.download_button("Descargar inventario actualizado", data=excel_bytes, file_name="inventario_actualizado.xlsx")
 
 if __name__ == "__main__":
