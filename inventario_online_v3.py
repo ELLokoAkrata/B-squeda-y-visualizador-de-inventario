@@ -146,6 +146,21 @@ def app():
         st.session_state['extension'] = '.xlsx' if archivo.name.endswith('.xlsx') else '.csv'
         st.session_state['filas_originales'] = len(st.session_state['datos'])
 
+        with st.expander("Previsualizar archivo original cargado"):
+            if st.session_state['extension'] == '.xlsx':
+                original_df = pd.read_excel(
+                    BytesIO(st.session_state['archivo_bytes']),
+                    sheet_name=st.session_state['hoja'],
+                    skiprows=3,
+                    dtype=str
+                )
+            else:
+                original_df = pd.read_csv(
+                    BytesIO(st.session_state['archivo_bytes']), dtype=str
+                )
+
+            st.dataframe(clean_df(original_df))
+
     datos = st.session_state['datos']
 
     if datos is not None:
