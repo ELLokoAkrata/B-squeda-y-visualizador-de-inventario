@@ -159,6 +159,16 @@ def app():
         st.write("Datos cargados:")
         st.dataframe(clean_df(datos))
 
+        # ---------- BÚSQUEDA ---------- #
+        texto_busqueda = st.text_input("Buscar texto:")
+        if texto_busqueda:
+            filtrado = resaltar_coincidencias(datos, texto_busqueda)
+            if filtrado.empty:
+                st.warning("No se encontraron coincidencias.")
+            else:
+                st.dataframe(clean_df(filtrado))
+                st.info(resumen_busqueda(filtrado))
+
         # ---------- FORM NUEVO ITEM ---------- #
         with st.expander("Añadir nuevo item"):
             with st.form("form-nuevo-item"):
@@ -185,16 +195,6 @@ def app():
                     [datos, pd.DataFrame([nuevo])], ignore_index=True))
                 st.success(f'Item añadido (fila {len(st.session_state["datos"])})')
                 datos = st.session_state['datos']
-
-        # ---------- BÚSQUEDA ---------- #
-        texto_busqueda = st.text_input("Buscar texto:")
-        if texto_busqueda:
-            filtrado = resaltar_coincidencias(datos, texto_busqueda)
-            if filtrado.empty:
-                st.warning("No se encontraron coincidencias.")
-            else:
-                st.dataframe(clean_df(filtrado))
-                st.info(resumen_busqueda(filtrado))
 
         # ---------- GENERAR ARCHIVO ACTUALIZADO ---------- #
         if st.session_state['extension'] == '.xlsx':
