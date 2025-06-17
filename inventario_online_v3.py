@@ -9,21 +9,10 @@ HEADER_OFFSET = 3
 
 # ---------- LIMPIEZA CENTRALIZADA ---------- #
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Elimina columnas índice fantasma (Unnamed:*), resetea el índice
-    y fuerza columnas object → str para que Arrow no reviente.
-    """
-    # Borra columnas tipo Unnamed y crea copia segura
     df = df.loc[:, ~df.columns.str.contains(r'^Unnamed')].copy()
-    # Índice limpio
     df.reset_index(drop=True, inplace=True)
-    # Todas las object como string plano sin applymap
     obj_cols = df.select_dtypes(include=['object']).columns
-    df.loc[:, obj_cols] = (
-        df[obj_cols]
-          .fillna('')
-          .astype(str)
-    )
+    df.loc[:, obj_cols] = df[obj_cols].fillna('').astype(str)
     return df
 
 # ---------- PREPARAR DATOS ---------- #
@@ -69,7 +58,6 @@ def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=No
         wb = load_workbook(filename=BytesIO(original_bytes))
         ws = wb[sheet_name] if sheet_name else wb.active
 
-        # Borra filas vacías finales
         ultima_fila = ws.max_row
         for row_idx in range(ws.max_row, 0, -1):
             if any(cell.value not in (None, "") for cell in ws[row_idx]):
@@ -169,7 +157,7 @@ def app():
 
     if datos is not None:
         st.write("Datos cargados:")
-        st.dataframe(clean_df(datos))  # limpio antes de mostrar
+        st.dataframe(clean_df(datos))
 
         # ---------- FORM NUEVO ITEM ---------- #
         with st.expander("Añadir nuevo item"):
@@ -208,7 +196,7 @@ def app():
                 st.dataframe(clean_df(filtrado))
                 st.info(resumen_busqueda(filtrado))
 
-        # ---------- DESCARGA ---------- #
+        # ---------- GENERAR ARCHIVO ACTUALIZADO ---------- #
         if st.session_state['extension'] == '.xlsx':
             buffer = convertir_a_excel(
                 datos,
@@ -223,7 +211,7 @@ def app():
             buffer.seek(0)
             fname = "inventario_actualizado.csv"
 
-        # ---------- DESCARGA (reubicado) ---------- #
+        # ---------- DESCARGA (justo debajo del campo de búsqueda) ---------- #
         st.download_button(
             "Descargar inventario actualizado",
             data=buffer,
@@ -243,7 +231,7 @@ def app():
                 prev = pd.read_csv(BytesIO(buffer.getvalue()), dtype=str)
             st.dataframe(clean_df(prev))
 
-
 if __name__ == "__main__":
     app()
+
 
