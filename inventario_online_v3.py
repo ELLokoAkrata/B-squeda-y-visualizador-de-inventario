@@ -6,6 +6,8 @@ from openpyxl.styles import Border, Side
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
+import json
+import toml
 
 # Cuántas filas saltar antes de la cabecera real
 HEADER_OFFSET = 3
@@ -204,6 +206,108 @@ def convertir_a_excel(df, original_bytes=None, filas_originales=0, sheet_name=No
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.fillna("").to_excel(writer, index=False)
     buffer.seek(0)
+    return buffer
+
+# ---------- EXPORTAR A JSON ---------- #
+def exportar_a_json(df, formato='registros'):
+    """
+    Exporta el DataFrame a JSON en diferentes formatos
+
+    Args:
+        df: DataFrame a exportar
+        formato: 'registros' (lista de objetos), 'columnas' (objeto de columnas), 'valores' (solo valores)
+
+    Returns:
+        BytesIO con el contenido JSON
+    """
+    # Convertir valores numéricos de pandas a tipos nativos de Python para serialización JSON
+    df_export = df.copy()
+
+    # Convertir tipos numéricos a float/int nativos
+    for col in df_export.select_dtypes(include=['number']).columns:
+        df_export[col] = df_export[col].astype(float)
+
+    # Opciones de formato
+    if formato == 'registros':
+        # Formato: [{"ITEM": "001", "DESCRIPCIÓN": "..."}, ...]
+        json_data = df_export.to_dict(orient='records')
+    elif formato == 'columnas':
+        # Formato: {"ITEM": ["001", "002"], "DESCRIPCIÓN": ["...", "..."]}
+        json_data = df_export.to_dict(orient='list')
+    elif formato == 'valores':
+        # Formato: [["001", "...", ...], ["002", "...", ...]]
+        json_data = df_export.values.tolist()
+    else:
+        json_data = df_export.to_dict(orient='records')
+
+    # Crear estructura con metadata
+    output = {
+        "metadata": {
+            "total_items": len(df_export),
+            "fecha_exportacion": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "formato": formato,
+            "columnas": list(df_export.columns)
+        },
+        "inventario": json_data
+    }
+
+    # Convertir a JSON con formato legible
+    json_string = json.dumps(output, ensure_ascii=False, indent=2)
+
+    # Crear buffer
+    buffer = BytesIO()
+    buffer.write(json_string.encode('utf-8'))
+    buffer.seek(0)
+
+    return buffer
+
+# ---------- EXPORTAR A TOML ---------- #
+def exportar_a_toml(df):
+    """
+    Exporta el DataFrame a formato TOML
+
+    Args:
+        df: DataFrame a exportar
+
+    Returns:
+        BytesIO con el contenido TOML
+    """
+    # Crear estructura TOML
+    toml_data = {
+        "metadata": {
+            "total_items": len(df),
+            "fecha_exportacion": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "columnas": list(df.columns)
+        },
+        "inventario": {}
+    }
+
+    # Convertir cada fila a una sección TOML usando ITEM como clave
+    for idx, row in df.iterrows():
+        item_key = str(row.get('ITEM', f'item_{idx}')).replace(' ', '_').replace('.', '_')
+
+        item_data = {}
+        for col in df.columns:
+            valor = row[col]
+
+            # Convertir valores de pandas a tipos nativos de Python
+            if pd.isna(valor):
+                item_data[col] = None
+            elif isinstance(valor, (int, float)):
+                item_data[col] = float(valor)
+            else:
+                item_data[col] = str(valor)
+
+        toml_data["inventario"][item_key] = item_data
+
+    # Convertir a string TOML
+    toml_string = toml.dumps(toml_data)
+
+    # Crear buffer
+    buffer = BytesIO()
+    buffer.write(toml_string.encode('utf-8'))
+    buffer.seek(0)
+
     return buffer
 
 # ---------- FILTROS AVANZADOS ---------- #
@@ -516,11 +620,58 @@ def app():
             fname = "inventario_actualizado.csv"
 
         st.download_button(
-            "⬇️ Descargar inventario completo actualizado",
+            "⬇️ Descargar inventario completo actualizado (XLSX/CSV)",
             data=buffer,
             file_name=fname,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+        # Exportar a otros formatos
+        st.markdown("### 📤 Exportar a Otros Formatos")
+
+        col_json, col_toml = st.columns(2)
+
+        with col_json:
+            st.markdown("**JSON**")
+            formato_json = st.selectbox(
+                "Formato JSON:",
+                ['registros', 'columnas', 'valores'],
+                help="registros: lista de objetos | columnas: objeto de arrays | valores: matriz de valores"
+            )
+
+            buffer_json = exportar_a_json(datos, formato=formato_json)
+
+            st.download_button(
+                "⬇️ Descargar JSON",
+                data=buffer_json,
+                file_name="inventario.json",
+                mime="application/json"
+            )
+
+            # Previsualizar JSON
+            with st.expander("👁️ Previsualizar JSON (primeros 5 items)"):
+                df_preview = datos.head(5)
+                json_preview = exportar_a_json(df_preview, formato=formato_json)
+                st.code(json_preview.getvalue().decode('utf-8'), language='json')
+
+        with col_toml:
+            st.markdown("**TOML**")
+            st.info("Formato TOML para archivos de configuración")
+
+            buffer_toml = exportar_a_toml(datos)
+
+            st.download_button(
+                "⬇️ Descargar TOML",
+                data=buffer_toml,
+                file_name="inventario.toml",
+                mime="application/toml"
+            )
+
+            # Previsualizar TOML
+            with st.expander("👁️ Previsualizar TOML (primeros 3 items)"):
+                df_preview_toml = datos.head(3)
+                toml_preview = exportar_a_toml(df_preview_toml)
+                st.code(toml_preview.getvalue().decode('utf-8'), language='toml')
 
     # ==================== TAB 3: BÚSQUEDA AVANZADA ====================
     with tab3:
@@ -584,16 +735,39 @@ def app():
             st.dataframe(datos_filtrados, use_container_width=True, height=400)
 
             # Exportar resultados filtrados
-            buffer_filtrado = BytesIO()
-            datos_filtrados.to_excel(buffer_filtrado, index=False, engine='openpyxl')
-            buffer_filtrado.seek(0)
+            st.markdown("### 📥 Exportar Resultados Filtrados")
 
-            st.download_button(
-                "⬇️ Descargar resultados filtrados",
-                data=buffer_filtrado,
-                file_name="inventario_filtrado.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            col_excel, col_json_filt, col_toml_filt = st.columns(3)
+
+            with col_excel:
+                buffer_filtrado = BytesIO()
+                datos_filtrados.to_excel(buffer_filtrado, index=False, engine='openpyxl')
+                buffer_filtrado.seek(0)
+
+                st.download_button(
+                    "⬇️ Excel",
+                    data=buffer_filtrado,
+                    file_name="inventario_filtrado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+            with col_json_filt:
+                buffer_json_filt = exportar_a_json(datos_filtrados, formato='registros')
+                st.download_button(
+                    "⬇️ JSON",
+                    data=buffer_json_filt,
+                    file_name="inventario_filtrado.json",
+                    mime="application/json"
+                )
+
+            with col_toml_filt:
+                buffer_toml_filt = exportar_a_toml(datos_filtrados)
+                st.download_button(
+                    "⬇️ TOML",
+                    data=buffer_toml_filt,
+                    file_name="inventario_filtrado.toml",
+                    mime="application/toml"
+                )
 
     # ==================== TAB 4: REPORTES & ANALÍTICAS ====================
     with tab4:
