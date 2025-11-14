@@ -8,6 +8,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import toml
+try:
+    import toon
+    TOON_AVAILABLE = True
+except ImportError:
+    TOON_AVAILABLE = False
 
 # Cuántas filas saltar antes de la cabecera real
 HEADER_OFFSET = 3
@@ -309,6 +314,97 @@ def exportar_a_toml(df):
     buffer.seek(0)
 
     return buffer
+
+# ---------- EXPORTAR A TOON ---------- #
+def exportar_a_toon(df):
+    """
+    Exporta el DataFrame a formato TOON (Token-Oriented Object Notation)
+
+    TOON es un formato optimizado para LLMs que reduce el uso de tokens en 30-60%
+    comparado con JSON, usando formato tabular para datos estructurados.
+
+    Args:
+        df: DataFrame a exportar
+
+    Returns:
+        BytesIO con el contenido TOON
+    """
+    if TOON_AVAILABLE:
+        # Usar librería toon si está disponible
+        try:
+            # Convertir DataFrame a diccionario para toon
+            data_dict = {
+                "metadata": {
+                    "total_items": len(df),
+                    "fecha_exportacion": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "columnas": list(df.columns)
+                },
+                "inventario": df.to_dict(orient='records')
+            }
+
+            # Convertir a TOON usando la librería
+            toon_string = toon.dumps(data_dict)
+        except Exception:
+            # Fallback a implementación manual
+            toon_string = _exportar_a_toon_manual(df)
+    else:
+        # Implementación manual del formato TOON
+        toon_string = _exportar_a_toon_manual(df)
+
+    # Crear buffer
+    buffer = BytesIO()
+    buffer.write(toon_string.encode('utf-8'))
+    buffer.seek(0)
+
+    return buffer
+
+def _exportar_a_toon_manual(df):
+    """
+    Implementación manual del formato TOON optimizado para inventarios
+
+    Formato TOON para datos tabulares:
+    inventario[N,]{col1,col2,col3}:
+      val1,val2,val3
+      val1,val2,val3
+    """
+    lines = []
+
+    # Metadata
+    lines.append("metadata:")
+    lines.append(f"  total_items: {len(df)}")
+    lines.append(f"  fecha_exportacion: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"  formato: TOON")
+    lines.append("")
+
+    # Columnas
+    columnas = list(df.columns)
+    columnas_str = ",".join(columnas)
+
+    # Formato tabular TOON: inventario[cantidad,]{columnas}:
+    lines.append(f"inventario[{len(df)},]{{{columnas_str}}}:")
+
+    # Datos en formato CSV compacto (sin comillas innecesarias)
+    for _, row in df.iterrows():
+        valores = []
+        for col in columnas:
+            valor = row[col]
+
+            # Convertir valores para TOON
+            if pd.isna(valor):
+                valores.append("")
+            elif isinstance(valor, str):
+                # Escapar comas en strings si es necesario
+                if ',' in str(valor) or '\n' in str(valor):
+                    valores.append(f'"{str(valor)}"')
+                else:
+                    valores.append(str(valor))
+            else:
+                # Números
+                valores.append(str(valor))
+
+        lines.append("  " + ",".join(valores))
+
+    return "\n".join(lines)
 
 # ---------- FILTROS AVANZADOS ---------- #
 def aplicar_filtros(df, categoria=None, ubicacion=None, status=None,
@@ -629,7 +725,7 @@ def app():
         # Exportar a otros formatos
         st.markdown("### 📤 Exportar a Otros Formatos")
 
-        col_json, col_toml = st.columns(2)
+        col_json, col_toml, col_toon = st.columns(3)
 
         with col_json:
             st.markdown("**JSON**")
@@ -649,14 +745,14 @@ def app():
             )
 
             # Previsualizar JSON
-            with st.expander("👁️ Previsualizar JSON (primeros 5 items)"):
+            with st.expander("👁️ Preview (5 items)"):
                 df_preview = datos.head(5)
                 json_preview = exportar_a_json(df_preview, formato=formato_json)
                 st.code(json_preview.getvalue().decode('utf-8'), language='json')
 
         with col_toml:
             st.markdown("**TOML**")
-            st.info("Formato TOML para archivos de configuración")
+            st.caption("Archivos de configuración")
 
             buffer_toml = exportar_a_toml(datos)
 
@@ -668,10 +764,29 @@ def app():
             )
 
             # Previsualizar TOML
-            with st.expander("👁️ Previsualizar TOML (primeros 3 items)"):
+            with st.expander("👁️ Preview (3 items)"):
                 df_preview_toml = datos.head(3)
                 toml_preview = exportar_a_toml(df_preview_toml)
                 st.code(toml_preview.getvalue().decode('utf-8'), language='toml')
+
+        with col_toon:
+            st.markdown("**TOON** 🚀")
+            st.caption("Optimizado para LLMs (-30% tokens)")
+
+            buffer_toon = exportar_a_toon(datos)
+
+            st.download_button(
+                "⬇️ Descargar TOON",
+                data=buffer_toon,
+                file_name="inventario.toon",
+                mime="text/plain"
+            )
+
+            # Previsualizar TOON
+            with st.expander("👁️ Preview (5 items)"):
+                df_preview_toon = datos.head(5)
+                toon_preview = exportar_a_toon(df_preview_toon)
+                st.code(toon_preview.getvalue().decode('utf-8'), language='text')
 
     # ==================== TAB 3: BÚSQUEDA AVANZADA ====================
     with tab3:
@@ -737,7 +852,7 @@ def app():
             # Exportar resultados filtrados
             st.markdown("### 📥 Exportar Resultados Filtrados")
 
-            col_excel, col_json_filt, col_toml_filt = st.columns(3)
+            col_excel, col_json_filt, col_toml_filt, col_toon_filt = st.columns(4)
 
             with col_excel:
                 buffer_filtrado = BytesIO()
@@ -767,6 +882,15 @@ def app():
                     data=buffer_toml_filt,
                     file_name="inventario_filtrado.toml",
                     mime="application/toml"
+                )
+
+            with col_toon_filt:
+                buffer_toon_filt = exportar_a_toon(datos_filtrados)
+                st.download_button(
+                    "⬇️ TOON",
+                    data=buffer_toon_filt,
+                    file_name="inventario_filtrado.toon",
+                    mime="text/plain"
                 )
 
     # ==================== TAB 4: REPORTES & ANALÍTICAS ====================
